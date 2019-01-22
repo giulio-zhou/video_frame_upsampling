@@ -16,16 +16,19 @@ from skimage import img_as_ubyte
 
 def train(args, model, device, optimizer, video_dataset):
     model.train()
-    data_iter = iter(video_dataset.data_loader)
-    for i in range(args.num_iters):
-        frame1, frame2, middle_frames = next(data_iter)
-        frame1, frame2, middle_frames = frame1.to(device), frame2.to(device), middle_frames.to(device)
-        optimizer.zero_grad()
-        output = model.forward((frame1, frame2))
-        loss = F.mse_loss(output, middle_frames)
-        loss.backward()
-        optimizer.step()
-        print('Iteration %d, Loss: %f' % (i, loss.item()))
+    i = 0
+    while True:
+        for frame1, frame2, middle_frames in video_dataset.data_loader:
+            if i < args.num_iters:
+                break
+            frame1, frame2, middle_frames = frame1.to(device), frame2.to(device), middle_frames.to(device)
+            optimizer.zero_grad()
+            output = model.forward((frame1, frame2))
+            loss = F.mse_loss(output, middle_frames)
+            loss.backward()
+            optimizer.step()
+            print('Iteration %d, Loss: %f' % (i, loss.item()))
+            i += 1
 
 def evaluate(args, model, device, video_dataset):
     model.eval()
@@ -87,7 +90,7 @@ def main():
     elif args.mode == 'eval':
         model.load_state_dict(torch.load(args.model_path))
         video_dataset = VideoDataset(videos, batch_size=1,
-                                     shuffle=True, num_workers=args.num_workers)
+                                     shuffle=False, num_workers=args.num_workers)
         evaluate(args, model, device, video_dataset)
     
 if __name__ == '__main__':
