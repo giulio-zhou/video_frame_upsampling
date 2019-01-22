@@ -6,24 +6,42 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import skimage.io as skio
+from torch.utils import data
 from torchvision import transforms
 from PIL import Image
 
-class Video:
-    def __init__(self, video_dir, preload_imgs=False):
+class Video(data.Dataset):
+    def __init__(self, video_dir, interval=2, middle_interval=1,
+                 preload_imgs=False, transform_fn=transforms.ToTensor()):
         self.video_dir = video_dir
+        self.interval = interval
+        self.middle_interval = middle_interval
         self.preload_imgs = preload_imgs
+        self.transform_fn = transform_fn
         self.img_paths = sorted(glob.glob(self.video_dir + '/*'))
         if self.preload_imgs:
             self.imgs = map(lambda x: Image.fromarray(skio.imread(x)), self.img_paths)
     def __len__(self):
-        return len(self.img_paths)
+        return len(self.img_paths) - self.interval
     def __getitem__(self, idx):
         if self.preload_imgs:
-            return self.imgs[idx]
+            img_open_fn = lambda i: self.imgs[i]
         else:
-            return Image.open(self.img_paths[idx])
+            img_open_fn = lambda i: Image.open(self.img_paths[i])
+        img, img2 = img_open_fn(idx), img_open_fn(idx+self.interval)
+        middle_img = img_open_fn(idx+self.middle_interval)
+        img, img2, middle_img = map(self.transform_fn, [img, img2, middle_img])
+        return img, img2, middle_img
 
+class VideoDataset:
+    def __init__(self, videos, batch_size, shuffle=False):
+        self.videos = videos
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.dataset = data.ConcatDataset(videos)
+        self.data_loader = data.DataLoader(self.dataset, batch_size, shuffle, pin_memory=True)
+
+"""
 class VideoDataset:
     def __init__(self, videos):
         self.videos = videos
@@ -34,7 +52,7 @@ class VideoDataset:
         #          transforms.Normalize([0.5, 0.5, 0.5],
         #                               [0.5, 0.5, 0.5])])
         self.transforms = transforms.ToTensor()
-    def sample(self, interval=2, middle_interval=1):
+    def sample(self):
         video_idx = np.random.randint(len(self.videos))
         video = self.videos[video_idx]
         frame_idx = np.random.randint(len(video) - interval)
@@ -54,8 +72,7 @@ class VideoDataset:
                 frame2 = self.transforms(frame2)
                 middle_frame = self.transforms(middle_frame)
                 yield frame1, frame2, middle_frame
-                if j > 200:
-                    return 
+"""
 
 class Net(nn.Module):
     def __init__(self):

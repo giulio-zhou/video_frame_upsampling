@@ -16,12 +16,10 @@ from skimage import img_as_ubyte
 
 def train(args, model, device, optimizer, video_dataset):
     model.train()
+    data_iter = iter(video_dataset.data_loader)
     for i in range(args.num_iters):
-        samples = [video_dataset.sample(args.interval, args.middle_interval)
-                   for _ in range(args.batch_size)]
-        frame1 = torch.stack([x[0] for x in samples], dim=0).to(device)
-        frame2 = torch.stack([x[1] for x in samples], dim=0).to(device)
-        middle_frames = torch.stack([x[2] for x in samples], dim=0).to(device)
+        frame1, frame2, middle_frames = next(data_iter)
+        frame1, frame2, middle_frames = frame1.to(device), frame2.to(device), middle_frames.to(device)
         optimizer.zero_grad()
         output = model.forward((frame1, frame2))
         loss = F.mse_loss(output, middle_frames)
@@ -34,13 +32,12 @@ def evaluate(args, model, device, video_dataset):
     if args.test_video:
         vwriter = skvideo.io.FFmpegWriter(args.test_video, outputdict={'-pix_fmt': 'yuv420p'})
     mse_losses = []
+    data_loader = video_dataset.data_loader
+    data_iter = iter(data_loader)
     with torch.no_grad():
-        for i, (frame1, frame2, middle_frame) in \
-                enumerate(video_dataset.loop(args.interval,
-                                             args.middle_interval)):
-            frame1 = frame1[None, :, :, :].to(device)
-            frame2 = frame2[None, :, :, :].to(device)
-            middle_frame = middle_frame[None, :, :, :].to(device)
+        for i in range(len(data_loader)):
+            frame1, frame2, middle_frame = next(data_iter)
+            frame1, frame2, middle_frame = frame1.to(device), frame2.to(device), middle_frame.to(device)
             output = model((frame1, frame2))
             output1 = model((frame1, output))
             output2 = model((output, frame2))
@@ -73,18 +70,20 @@ def main():
     device = torch.device("cuda")
 
     video_paths = sorted(glob.glob(args.video_dir + '/*'))
-    videos = map(lambda x: Video(x, args.preload_imgs), video_paths)
-    video_dataset = VideoDataset(videos)
+    videos = map(lambda x: Video(x, args.interval, args.middle_interval,
+                                 args.preload_imgs), video_paths)
 
     model = Net().to(device)
 
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
+        video_dataset = VideoDataset(videos, args.batch_size, shuffle=True)
         train(args, model, device, optimizer, video_dataset)
         torch.save(model.state_dict(), args.model_path) 
     elif args.mode == 'eval':
         model.load_state_dict(torch.load(args.model_path))
+        video_dataset = VideoDataset(videos, batch_size=1, shuffle=False)
         evaluate(args, model, device, video_dataset)
     
 if __name__ == '__main__':
