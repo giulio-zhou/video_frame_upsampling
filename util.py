@@ -34,12 +34,13 @@ class Video(data.Dataset):
         return img, img2, middle_img
 
 class VideoDataset:
-    def __init__(self, videos, batch_size, shuffle=False):
+    def __init__(self, videos, batch_size, shuffle=False, num_workers=0):
         self.videos = videos
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.dataset = data.ConcatDataset(videos)
-        self.data_loader = data.DataLoader(self.dataset, batch_size, shuffle, pin_memory=True)
+        self.data_loader = data.DataLoader(self.dataset, batch_size, shuffle,
+                                           pin_memory=True, num_workers=num_workers)
 
 """
 class VideoDataset:

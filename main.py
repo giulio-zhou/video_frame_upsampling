@@ -64,6 +64,8 @@ def main():
     parser.add_argument('--test_video', help="Test video output path.")
     parser.add_argument('--preload_imgs', dest='preload_imgs', action='store_true',
                         help="Whether to load images into memory ahead of time.")
+    parser.add_argument('--num_workers', default=0, type=int,
+                        help="Number of workers for DataLoader")
     parser.set_defaults(preload_imgs=False)
     args = parser.parse_args()
 
@@ -78,12 +80,14 @@ def main():
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
-        video_dataset = VideoDataset(videos, args.batch_size, shuffle=True)
+        video_dataset = VideoDataset(videos, args.batch_size,
+                                     shuffle=True, num_workers=args.num_workers)
         train(args, model, device, optimizer, video_dataset)
         torch.save(model.state_dict(), args.model_path) 
     elif args.mode == 'eval':
         model.load_state_dict(torch.load(args.model_path))
-        video_dataset = VideoDataset(videos, batch_size=1, shuffle=False)
+        video_dataset = VideoDataset(videos, batch_size=1,
+                                     shuffle=True, num_workers=args.num_workers)
         evaluate(args, model, device, video_dataset)
     
 if __name__ == '__main__':
