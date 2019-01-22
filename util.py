@@ -66,31 +66,31 @@ class Net(nn.Module):
         self.conv4 = nn.Conv2d(32, 32, 3, 2, 1)
         self.conv5 = nn.Conv2d(32, 64, 3, 1, 1)
         self.conv6 = nn.Conv2d(64, 64, 3, 2, 1)
-        # self.deconv1 = nn.ConvTranspose2d(128, 64, 3, 2)
-        # self.deconv2 = nn.ConvTranspose2d(64, 64, 3, 1)
-        # self.deconv3 = nn.ConvTranspose2d(64, 32, 3, 2)
-        # self.deconv4 = nn.ConvTranspose2d(32, 32, 3, 1)
-        # self.deconv5 = nn.ConvTranspose2d(32, 16, 3, 2)
-        # self.deconv6 = nn.ConvTranspose2d(16, 3, 3, 1)
-        self.upsample1 = nn.Upsample(scale_factor=2, mode='bilinear',
-                                     align_corners=True)
-        self.deconv1 = nn.Conv2d(128, 64, 3, 1, 1)
-        self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
-        self.upsample2 = nn.Upsample(scale_factor=2, mode='bilinear',
-                                     align_corners=True)
-        self.deconv3 = nn.Conv2d(64, 32, 3, 1, 1)
-        self.deconv4 = nn.Conv2d(32, 32, 3, 1, 1)
-        self.upsample3 = nn.Upsample(scale_factor=2, mode='bilinear',
-                                     align_corners=True)
-        self.deconv5 = nn.Conv2d(32, 16, 3, 1, 1)
-        self.deconv6 = nn.Conv2d(16, 3, 3, 1, 1)
         self.convs = [self.conv1, self.conv2, self.conv3,
                       self.conv4, self.conv5, self.conv6]
-        self.deconvs = [[self.deconv1, self.deconv2], [self.deconv3,
-                        self.deconv4], [self.deconv5, self.deconv6]]
-        self.upsamplings = [self.upsample1, self.upsample2, self.upsample3]
-        # self.deconvs = [self.deconv1, self.deconv2, self.deconv3,
-        #                 self.deconv4, self.deconv5, self.deconv6]
+        self.deconv1 = nn.ConvTranspose2d(128, 64, 2, 2)
+        self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
+        self.deconv3 = nn.ConvTranspose2d(64, 32, 2, 2)
+        self.deconv4 = nn.Conv2d(32, 32, 3, 1, 1)
+        self.deconv5 = nn.ConvTranspose2d(32, 16, 2, 2)
+        self.deconv6 = nn.Conv2d(16, 3, 3, 1, 1)
+        self.deconvs = [self.deconv1, self.deconv2, self.deconv3,
+                        self.deconv4, self.deconv5, self.deconv6]
+        # self.upsample1 = nn.Upsample(scale_factor=2, mode='bilinear',
+        #                              align_corners=True)
+        # self.deconv1 = nn.Conv2d(128, 64, 3, 1, 1)
+        # self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
+        # self.upsample2 = nn.Upsample(scale_factor=2, mode='bilinear',
+        #                              align_corners=True)
+        # self.deconv3 = nn.Conv2d(64, 32, 3, 1, 1)
+        # self.deconv4 = nn.Conv2d(32, 32, 3, 1, 1)
+        # self.upsample3 = nn.Upsample(scale_factor=2, mode='bilinear',
+        #                              align_corners=True)
+        # self.deconv5 = nn.Conv2d(32, 16, 3, 1, 1)
+        # self.deconv6 = nn.Conv2d(16, 3, 3, 1, 1)
+        # self.deconvs = [[self.deconv1, self.deconv2], [self.deconv3,
+        #                 self.deconv4], [self.deconv5, self.deconv6]]
+        # self.upsamplings = [self.upsample1, self.upsample2, self.upsample3]
 
     def forward(self, x):
         frame1, frame2 = x
@@ -106,16 +106,16 @@ class Net(nn.Module):
         return x
 
     def apply_deconvs(self, x):
-        # for i in range(len(self.deconvs)-1):
-        #     x = F.relu(self.deconvs[i](x))
-        # x = F.sigmoid(self.deconvs[-1](x))
         for i in range(len(self.deconvs)-1):
-            x = self.upsamplings[i](x)
-            x = F.relu(self.deconvs[i][0](x))
-            x = F.relu(self.deconvs[i][1](x))
-        x = self.upsamplings[-1](x)
-        x = F.relu(self.deconvs[-1][0](x))
-        x = F.sigmoid(self.deconvs[-1][1](x))
+            x = F.relu(self.deconvs[i](x))
+        x = F.sigmoid(self.deconvs[-1](x))
+        # for i in range(len(self.deconvs)-1):
+        #     x = self.upsamplings[i](x)
+        #     x = F.relu(self.deconvs[i][0](x))
+        #     x = F.relu(self.deconvs[i][1](x))
+        # x = self.upsamplings[-1](x)
+        # x = F.relu(self.deconvs[-1][0](x))
+        # x = F.sigmoid(self.deconvs[-1][1](x))
         return x
 
 def preprocess_subdirs(video_dir, height, width, output_dir, batch_size=64):
