@@ -75,25 +75,67 @@ class VideoDataset:
                 yield frame1, frame2, middle_frame
 """
 
+class DownConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(DownConv, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        return x
+
+class UpConv(nn.Module):
+    def __init__(self, in_channels, out_channels, upsample_op):
+        super(UpConv, self).__init__()
+        if upsample_op == 'bilinear':
+            self.upsample = nn.Upsample(
+                scale_factor=2, mode='bilinear', align_corners=True)
+            assert in_channels == 2 * out_channels
+            self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        elif upsample_op == 'conv_transpose':
+            self.upsample = nn.Sequential(
+                nn.ConvTranspose2d(in_channels, out_channels, 2, 2),
+                nn.ReLU()
+            )
+            self.conv1 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+    def forward(self, x):
+        x = self.upsample(x)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        return x
+
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, device, num_layers, start_channels, upsample_op='bilinear'):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, 3, 1, 1)
-        self.conv2 = nn.Conv2d(16, 16, 3, 2, 1)
-        self.conv3 = nn.Conv2d(16, 32, 3, 1, 1)
-        self.conv4 = nn.Conv2d(32, 32, 3, 2, 1)
-        self.conv5 = nn.Conv2d(32, 64, 3, 1, 1)
-        self.conv6 = nn.Conv2d(64, 64, 3, 2, 1)
-        self.convs = [self.conv1, self.conv2, self.conv3,
-                      self.conv4, self.conv5, self.conv6]
-        self.deconv1 = nn.ConvTranspose2d(128, 64, 2, 2)
-        self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
-        self.deconv3 = nn.ConvTranspose2d(64, 32, 2, 2)
-        self.deconv4 = nn.Conv2d(32, 32, 3, 1, 1)
-        self.deconv5 = nn.ConvTranspose2d(32, 16, 2, 2)
-        self.deconv6 = nn.Conv2d(16, 3, 3, 1, 1)
-        self.deconvs = [self.deconv1, self.deconv2, self.deconv3,
-                        self.deconv4, self.deconv5, self.deconv6]
+        self.conv_in = nn.Conv2d(3, start_channels, 3, 1, 1)
+        self.conv_out = nn.Conv2d(2*start_channels, 3, 3, 1, 1)
+        self.down_convs = [nn.Sequential(self.conv_in, nn.ReLU())]
+        self.up_convs = []
+        for i in range(num_layers):
+            conv_layer = DownConv(start_channels*(2**i),
+                                  start_channels*(2**(i+1)))
+            self.down_convs.append(conv_layer)
+            self.add_module('down_conv%d' % i, conv_layer)
+        for i in range(num_layers, 0, -1):
+            conv_layer = UpConv(start_channels*(2**(i+1)),
+                                start_channels*(2**i), upsample_op)
+            self.up_convs.append(conv_layer)
+            self.add_module('up_conv%d' % (num_layers - i), conv_layer)
+        self.up_convs += [self.conv_out]
+
+        # self.deconv1 = nn.ConvTranspose2d(128, 64, 2, 2)
+        # self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
+        # self.deconv2_2 = nn.Conv2d(64, 64, 3, 1, 1)
+        # self.deconv3 = nn.ConvTranspose2d(64, 32, 2, 2)
+        # self.deconv4 = nn.Conv2d(32, 32, 3, 1, 1)
+        # self.deconv4_2 = nn.Conv2d(32, 32, 3, 1, 1)
+        # self.deconv5 = nn.ConvTranspose2d(32, 16, 2, 2)
+        # self.deconv6 = nn.Conv2d(16, 16, 3, 1, 1)
+        # self.deconv6_2 = nn.Conv2d(16, 3, 3, 1, 1)
+        # self.deconvs = [self.deconv1, self.deconv2, self.deconv2_2, self.deconv3,
+        #                 self.deconv4, self.deconv4_2, self.deconv5, self.deconv6, self.deconv6_2]
         # self.upsample1 = nn.Upsample(scale_factor=2, mode='bilinear',
         #                              align_corners=True)
         # self.deconv1 = nn.Conv2d(128, 64, 3, 1, 1)
@@ -112,28 +154,21 @@ class Net(nn.Module):
 
     def forward(self, x):
         frame1, frame2 = x
-        frame1 = self.apply_convs(frame1)
-        frame2 = self.apply_convs(frame2)
+        frame1 = self.apply_down_convs(frame1)
+        frame2 = self.apply_down_convs(frame2)
         x = torch.cat([frame1, frame2], dim=1)
-        x = self.apply_deconvs(x)
+        x = self.apply_up_convs(x)
         return x
 
-    def apply_convs(self, x):
-        for conv in self.convs:
-            x = F.relu(conv(x))
+    def apply_down_convs(self, x):
+        for conv in self.down_convs:
+            x = conv(x)
         return x
 
-    def apply_deconvs(self, x):
-        for i in range(len(self.deconvs)-1):
-            x = F.relu(self.deconvs[i](x))
-        x = F.sigmoid(self.deconvs[-1](x))
-        # for i in range(len(self.deconvs)-1):
-        #     x = self.upsamplings[i](x)
-        #     x = F.relu(self.deconvs[i][0](x))
-        #     x = F.relu(self.deconvs[i][1](x))
-        # x = self.upsamplings[-1](x)
-        # x = F.relu(self.deconvs[-1][0](x))
-        # x = F.sigmoid(self.deconvs[-1][1](x))
+    def apply_up_convs(self, x):
+        for conv in self.up_convs:
+            x = conv(x)
+        x = F.sigmoid(x)
         return x
 
 def preprocess_subdirs(video_dir, height, width, output_dir, batch_size=64):

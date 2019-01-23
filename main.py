@@ -69,6 +69,11 @@ def main():
                         help="Whether to load images into memory ahead of time.")
     parser.add_argument('--num_workers', default=0, type=int,
                         help="Number of workers for DataLoader")
+    parser.add_argument('--nn_start_channels', default=16, type=int,
+                        help="Number of channels in starting layer.")
+    parser.add_argument('--nn_num_layers', default=4, type=int,
+                        help="Number of up/down conv layers.")
+    parser.add_argument('--upsample_op', default='bilinear', help="Upsampling op.")
     parser.set_defaults(preload_imgs=False)
     args = parser.parse_args()
 
@@ -78,7 +83,8 @@ def main():
     videos = map(lambda x: Video(x, args.interval, args.middle_interval,
                                  args.preload_imgs), video_paths)
 
-    model = Net().to(device)
+    model = Net(device, args.nn_num_layers,
+                args.nn_start_channels, args.upsample_op).to(device)
 
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
