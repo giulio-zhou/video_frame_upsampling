@@ -76,9 +76,15 @@ class VideoDataset:
 """
 
 class DownConv(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, downsample_op):
         super(DownConv, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)
+        if downsample_op == 'max_pool':
+            self.conv1 = nn.Sequential(
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(in_channels, out_channels, 3, 1, 1),
+            )
+        elif downsample_op == 'strided_conv':
+            self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 2, 1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -107,7 +113,8 @@ class UpConv(nn.Module):
         return x
 
 class Net(nn.Module):
-    def __init__(self, device, num_layers, start_channels, upsample_op='bilinear'):
+    def __init__(self, device, num_layers, start_channels,
+                 upsample_op='bilinear', downsample_op='strided_conv'):
         super(Net, self).__init__()
         self.conv_in = nn.Conv2d(3, start_channels, 3, 1, 1)
         self.conv_out = nn.Conv2d(2*start_channels, 3, 3, 1, 1)
@@ -115,7 +122,7 @@ class Net(nn.Module):
         self.up_convs = []
         for i in range(num_layers):
             conv_layer = DownConv(start_channels*(2**i),
-                                  start_channels*(2**(i+1)))
+                                  start_channels*(2**(i+1)), downsample_op)
             self.down_convs.append(conv_layer)
             self.add_module('down_conv%d' % i, conv_layer)
         for i in range(num_layers, 0, -1):

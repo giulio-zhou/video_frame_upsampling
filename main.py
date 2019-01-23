@@ -74,6 +74,8 @@ def main():
     parser.add_argument('--nn_num_layers', default=4, type=int,
                         help="Number of up/down conv layers.")
     parser.add_argument('--upsample_op', default='bilinear', help="Upsampling op.")
+    parser.add_argument('--downsample_op', default='strided_conv',
+                        help="Downsampling op.")
     parser.set_defaults(preload_imgs=False)
     args = parser.parse_args()
 
@@ -84,7 +86,8 @@ def main():
                                  args.preload_imgs), video_paths)
 
     model = Net(device, args.nn_num_layers,
-                args.nn_start_channels, args.upsample_op).to(device)
+                args.nn_start_channels,
+                args.upsample_op, args.downsampling_op).to(device)
 
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
@@ -92,7 +95,7 @@ def main():
         video_dataset = VideoDataset(videos, args.batch_size,
                                      shuffle=True, num_workers=args.num_workers)
         train(args, model, device, optimizer, video_dataset)
-        torch.save(model.state_dict(), args.model_path) 
+        torch.save(model.state_dict(), args.model_path)
     elif args.mode == 'eval':
         model.load_state_dict(torch.load(args.model_path))
         video_dataset = VideoDataset(videos, batch_size=1,
