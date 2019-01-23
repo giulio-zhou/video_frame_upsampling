@@ -19,8 +19,8 @@ def train(args, model, device, optimizer, video_dataset):
     i = 0
     while True:
         for frame1, frame2, middle_frames in video_dataset.data_loader:
-            if i < args.num_iters:
-                break
+            if i >= args.num_iters:
+                return
             frame1, frame2, middle_frames = frame1.to(device), frame2.to(device), middle_frames.to(device)
             optimizer.zero_grad()
             output = model.forward((frame1, frame2))
@@ -47,7 +47,7 @@ def evaluate(args, model, device, video_dataset):
             loss = F.mse_loss(output, middle_frame)
             mse_losses.append(loss)
             if args.test_video:
-                output = output[0].permute(1, 2, 0)
+                output = output[0].permute(1, 2, 0).cpu().numpy()
                 vwriter.writeFrame(img_as_ubyte(output))
             print('Frame number %d, Loss: %f' % (i, loss))
 
