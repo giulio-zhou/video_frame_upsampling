@@ -119,7 +119,7 @@ class UNetUpConv(UpConv):
 class Net(nn.Module):
     def __init__(self, device, num_layers, start_channels,
                  upsample_op='bilinear', downsample_op='strided_conv',
-                 unet=False, output_activation=F.sigmoid):
+                 unet=False, output_activation=F.sigmoid, loss_function=F.mse_loss):
         super(Net, self).__init__()
         self.conv_in = nn.Conv2d(3, start_channels, 3, 1, 1)
         self.conv_out = nn.Conv2d(4*start_channels if unet else 2*start_channels, 3, 3, 1, 1)
@@ -143,6 +143,7 @@ class Net(nn.Module):
         self.up_convs += [self.conv_out]
 
         self.output_activation = output_activation
+        self.loss_function = loss_function
         # self.deconv1 = nn.ConvTranspose2d(128, 64, 2, 2)
         # self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
         # self.deconv2_2 = nn.Conv2d(64, 64, 3, 1, 1)
