@@ -42,8 +42,6 @@ def evaluate(args, model, device, video_dataset):
             frame1, frame2, middle_frame = next(data_iter)
             frame1, frame2, middle_frame = frame1.to(device), frame2.to(device), middle_frame.to(device)
             output = model((frame1, frame2))
-            output1 = model((frame1, output))
-            output2 = model((output, frame2))
             loss = F.mse_loss(output, middle_frame)
             mse_losses.append(loss)
             if args.test_video:
@@ -76,7 +74,9 @@ def main():
     parser.add_argument('--upsample_op', default='bilinear', help="Upsampling op.")
     parser.add_argument('--downsample_op', default='strided_conv',
                         help="Downsampling op.")
-    parser.set_defaults(preload_imgs=False)
+    parser.add_argument('--unet', dest='unet', action='store_true',
+                        help="Whether to use lateral connections a la UNet.")
+    parser.set_defaults(preload_imgs=False, unet=False)
     args = parser.parse_args()
 
     device = torch.device("cuda")
@@ -87,7 +87,8 @@ def main():
 
     model = Net(device, args.nn_num_layers,
                 args.nn_start_channels,
-                args.upsample_op, args.downsampling_op).to(device)
+                args.upsample_op, args.downsample_op,
+                args.unet).to(device)
 
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)

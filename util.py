@@ -97,7 +97,6 @@ class UpConv(nn.Module):
         if upsample_op == 'bilinear':
             self.upsample = nn.Upsample(
                 scale_factor=2, mode='bilinear', align_corners=True)
-            assert in_channels == 2 * out_channels
             self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
         elif upsample_op == 'conv_transpose':
             self.upsample = nn.Sequential(
@@ -112,22 +111,33 @@ class UpConv(nn.Module):
         x = F.relu(self.conv2(x))
         return x
 
+class UNetUpConv(UpConv):
+    def __init__(self, in_channels, out_channels, upsample_op):
+        super(UNetUpConv, self).__init__(2*in_channels, out_channels,
+                                         upsample_op)
+
 class Net(nn.Module):
     def __init__(self, device, num_layers, start_channels,
-                 upsample_op='bilinear', downsample_op='strided_conv'):
+                 upsample_op='bilinear', downsample_op='strided_conv',
+                 unet=False):
         super(Net, self).__init__()
         self.conv_in = nn.Conv2d(3, start_channels, 3, 1, 1)
-        self.conv_out = nn.Conv2d(2*start_channels, 3, 3, 1, 1)
+        self.conv_out = nn.Conv2d(4*start_channels if unet else 2*start_channels, 3, 3, 1, 1)
+        self.unet = unet
+        self.upconv = UNetUpConv if unet else UpConv
+
         self.down_convs = [nn.Sequential(self.conv_in, nn.ReLU())]
-        self.up_convs = []
         for i in range(num_layers):
             conv_layer = DownConv(start_channels*(2**i),
                                   start_channels*(2**(i+1)), downsample_op)
             self.down_convs.append(conv_layer)
             self.add_module('down_conv%d' % i, conv_layer)
-        for i in range(num_layers, 0, -1):
-            conv_layer = UpConv(start_channels*(2**(i+1)),
-                                start_channels*(2**i), upsample_op)
+        self.up_conv0 = UpConv(start_channels*(2**(num_layers+1)),
+                               start_channels*(2**num_layers), upsample_op)
+        self.up_convs = [self.up_conv0]
+        for i in range(num_layers - 1, 0, -1):
+            conv_layer = self.upconv(start_channels*(2**(i+1)),
+                                     start_channels*(2**i), upsample_op)
             self.up_convs.append(conv_layer)
             self.add_module('up_conv%d' % (num_layers - i), conv_layer)
         self.up_convs += [self.conv_out]
@@ -161,19 +171,34 @@ class Net(nn.Module):
 
     def forward(self, x):
         frame1, frame2 = x
-        frame1 = self.apply_down_convs(frame1)
-        frame2 = self.apply_down_convs(frame2)
+        frame1, frame1_outputs = self.apply_down_convs(frame1)
+        frame2, frame2_outputs = self.apply_down_convs(frame2)
         x = torch.cat([frame1, frame2], dim=1)
-        x = self.apply_up_convs(x)
+        if self.unet:
+            x = self.apply_unet_up_convs(x, frame1_outputs, frame2_outputs)
+        else:
+            x = self.apply_up_convs(x)
         return x
 
     def apply_down_convs(self, x):
+        down_conv_outputs = []
         for conv in self.down_convs:
             x = conv(x)
-        return x
+            down_conv_outputs.append(x)
+        return x, down_conv_outputs
 
     def apply_up_convs(self, x):
         for conv in self.up_convs:
+            x = conv(x)
+        x = F.sigmoid(x)
+        return x
+
+    def apply_unet_up_convs(self, x, down_convs1, down_convs2):
+        x = self.up_convs[0](x)
+        down_convs1, down_convs2 = down_convs1[::-1][1:], down_convs1[::-1][1:]
+        for conv, down_conv1, down_conv2 in zip(self.up_convs[1:],
+                                                down_convs1, down_convs2):
+            x = torch.cat([x, down_conv1, down_conv2], dim=1)
             x = conv(x)
         x = F.sigmoid(x)
         return x
