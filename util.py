@@ -119,7 +119,7 @@ class UNetUpConv(UpConv):
 class Net(nn.Module):
     def __init__(self, device, num_layers, start_channels,
                  upsample_op='bilinear', downsample_op='strided_conv',
-                 unet=False):
+                 unet=False, output_activation=F.sigmoid):
         super(Net, self).__init__()
         self.conv_in = nn.Conv2d(3, start_channels, 3, 1, 1)
         self.conv_out = nn.Conv2d(4*start_channels if unet else 2*start_channels, 3, 3, 1, 1)
@@ -142,6 +142,7 @@ class Net(nn.Module):
             self.add_module('up_conv%d' % (num_layers - i), conv_layer)
         self.up_convs += [self.conv_out]
 
+        self.output_activation = output_activation
         # self.deconv1 = nn.ConvTranspose2d(128, 64, 2, 2)
         # self.deconv2 = nn.Conv2d(64, 64, 3, 1, 1)
         # self.deconv2_2 = nn.Conv2d(64, 64, 3, 1, 1)
@@ -190,7 +191,7 @@ class Net(nn.Module):
     def apply_up_convs(self, x):
         for conv in self.up_convs:
             x = conv(x)
-        x = F.sigmoid(x)
+        x = self.output_activation(x)
         return x
 
     def apply_unet_up_convs(self, x, down_convs1, down_convs2):
@@ -200,7 +201,7 @@ class Net(nn.Module):
                                                 down_convs1, down_convs2):
             x = torch.cat([x, down_conv1, down_conv2], dim=1)
             x = conv(x)
-        x = F.sigmoid(x)
+        x = self.output_activation(x)
         return x
 
 def preprocess_subdirs(video_dir, height, width, output_dir, batch_size=64):

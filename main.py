@@ -30,7 +30,7 @@ def train(args, model, device, optimizer, video_dataset):
             print('Iteration %d, Loss: %f' % (i, loss.item()))
             i += 1
 
-def evaluate(args, model, device, video_dataset):
+def evaluate(args, model, device, video_dataset, postprocess_fn):
     model.eval()
     if args.test_video:
         vwriter = skvideo.io.FFmpegWriter(args.test_video, outputdict={'-pix_fmt': 'yuv420p'})
@@ -46,6 +46,7 @@ def evaluate(args, model, device, video_dataset):
             mse_losses.append(loss)
             if args.test_video:
                 output = output[0].permute(1, 2, 0).cpu().numpy()
+                output = postprocess_fn(output)
                 vwriter.writeFrame(img_as_ubyte(output))
             print('Frame number %d, Loss: %f' % (i, loss))
 
@@ -76,19 +77,38 @@ def main():
                         help="Downsampling op.")
     parser.add_argument('--unet', dest='unet', action='store_true',
                         help="Whether to use lateral connections a la UNet.")
+    parser.add_argument('--output_activation', default='sigmoid',
+                        help="Activation function applied to outputs.")
     parser.set_defaults(preload_imgs=False, unet=False)
     args = parser.parse_args()
 
     device = torch.device("cuda")
 
+    from torchvision import transforms
+    # transform_fn = transforms.Compose([transforms.Resize((512, 960)), transforms.ToTensor()])
+    transform_list = [transforms.Resize((256, 480)), transforms.ToTensor()]
+
+    if args.output_activation == 'sigmoid':
+        output_activation = F.sigmoid
+        preprocess_fn, postprocess_fn = lambda x: x, lambda x: x
+    elif args.output_activation == 'tanh':
+        output_activation = F.tanh
+        preprocess_fn, postprocess_fn = lambda x: 2*(x-0.5), lambda x: 0.5*(x+1)
+    else:
+        print("Output activation function must be in {sigmoid, tanh}.")
+        sys.exit(1)
+
+    transform_list.append(transforms.Lambda(preprocess_fn))
+    transform_fn = transforms.Compose(transform_list)
+
     video_paths = sorted(glob.glob(args.video_dir + '/*'))
     videos = map(lambda x: Video(x, args.interval, args.middle_interval,
-                                 args.preload_imgs), video_paths)
+                                 args.preload_imgs, transform_fn=transform_fn), video_paths)
 
     model = Net(device, args.nn_num_layers,
                 args.nn_start_channels,
                 args.upsample_op, args.downsample_op,
-                args.unet).to(device)
+                args.unet, output_activation).to(device)
 
     if args.mode == 'train':
         # optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
@@ -101,7 +121,7 @@ def main():
         model.load_state_dict(torch.load(args.model_path))
         video_dataset = VideoDataset(videos, batch_size=1,
                                      shuffle=False, num_workers=args.num_workers)
-        evaluate(args, model, device, video_dataset)
+        evaluate(args, model, device, video_dataset, postprocess_fn)
     
 if __name__ == '__main__':
     main()
