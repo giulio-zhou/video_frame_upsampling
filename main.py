@@ -83,7 +83,9 @@ def main():
     parser.add_argument('--output_activation', default='sigmoid',
                         help="Activation function applied to outputs.")
     parser.add_argument('--logdir', help="Directory to which to log outputs.")
-    parser.add_argument('--loss_function', default='mse', help="Final layer loss function.")
+    parser.add_argument('--loss_function', default='mse',
+                        help="Final layer loss function.")
+    parser.add_argument('--resize', help="Resize inputs to height,width.")
     parser.set_defaults(preload_imgs=False, unet=False)
     args = parser.parse_args()
 
@@ -93,8 +95,10 @@ def main():
         os.makedirs(args.logdir) # Should fail if directory already exists.
 
     from torchvision import transforms
-    # transform_fn = transforms.Compose([transforms.Resize((512, 960)), transforms.ToTensor()])
-    transform_list = [transforms.Resize((256, 480)), transforms.ToTensor()]
+    transform_list = [transforms.ToTensor()]
+    if args.resize:
+        height, width = map(int, args.resize.split(','))
+        transform_list = [transforms.Resize((height, width))] + transform_list
 
     if args.output_activation == 'sigmoid':
         output_activation = F.sigmoid
