@@ -1,5 +1,8 @@
 import glob
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import os
 import sys
 import torch
@@ -229,6 +232,16 @@ def preprocess_subdirs(video_dir, height, width, output_dir, batch_size=64):
             for j, img in enumerate(resized):
                 skio.imsave('%s/%05d.png' % (full_output_dir, i + j), img)
 
+def plot_losses(logdirs, output_path):
+    results = {}
+    for logdir in logdirs:
+        results[logdir] = [float(x.split()[-1]) for x in open(logdir + '/train.out', 'r')]
+        plt.plot(results[logdir], label=logdir)
+    plt.legend()
+    plt.xlabel('Number of Iterations')
+    plt.ylabel('Loss')
+    plt.savefig(output_path)
+
 if __name__ == '__main__':
     mode = sys.argv[1] 
     if mode == 'preprocess_subdirs':
@@ -236,3 +249,7 @@ if __name__ == '__main__':
         height, width = map(int, sys.argv[3].split(','))
         output_dir = sys.argv[4]
         preprocess_subdirs(video_dir, height, width, output_dir)
+    elif mode == 'plot_losses':
+        logdirs = sys.argv[2].split(',')
+        output_path = sys.argv[3]
+        plot_losses(logdirs, output_path)
